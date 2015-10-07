@@ -15,13 +15,15 @@ def out(*args, **kwargs):
   print(*args, **kwargs, file=stderr)
 
 
-def die(code, reason):
-  out(reason)
+def die(code, reason=None):
+  if reason:
+    out(reason)
   exit(code)
 
 
 def show_qr(issuer, user, secret):
-  cmd = "qrencode -t ANSI -m 1 -o - 'otpauth://totp/{user}?secret={secret}&issuer={issuer}'"
+  cmd = "qrencode -t ANSI -m 1 -o -"
+        " 'otpauth://totp/{user}?secret={secret}&issuer={issuer}'"
   cmd = cmd.format(issuer=issuer, user=user, secret=secret)
   from subprocess import call
   import shlex
@@ -41,7 +43,7 @@ def setup(path):
   user = getuser()
   show_qr(issuer=issuer, user=user, secret=b32key)
   with open(path, "wt") as fd:
-    json.dump(dict(key=b32key), fd)
+    json.dump(dict(totp_secret=b32key), fd)
 
 
 def check_totp(secret, cb):
@@ -66,23 +68,31 @@ def check_totp(secret, cb):
 if __name__ == '__main__':
   path = os.path.expanduser(CONFIG)
   if not os.path.exists(path):
+    out("no config found, performing initial setup of %s" % CONFIG)
     setup(path)
   else:
     queue = Queue()
     with open(path, 'rt') as fd:
       cfg = json.load(fd)
 
+    if 'totp_secret' in cfg:
+      Thread(target=check_totp,
+             kwargs=dict(secret=cfg['totp_secret'],
+             cb=queue.put),
+             daemon=True).start()
 
-    t = Thread(target=check_totp,
-               kwargs=dict(secret=cfg['otpkey'],
-               cb=queue.put),
-               daemon=True)
-    t.start()
+    if 'tokenizer' in cfg:
+      from tokenizer import tokenizer
+      Thread(target=tokenizer,
+             kwargs=dict(cfg=cfg['tokenizer'],
+             cb=queue.put),
+             daemon=True).start()
 
     try:
       verdict, reason = queue.get(timeout=15)
+      out(verdict, reason)
       if verdict == 'deny':
-        die(1, "denied: %s" % reason)
+        die(1)
     except Empty:
       die(2, "timeout")
 
