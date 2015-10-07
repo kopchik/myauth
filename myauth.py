@@ -12,7 +12,7 @@ CONFIG = "~/.ssh/myauth.json"
 
 
 def out(*args, **kwargs):
-  print(*args, **kwargs, file=stderr)
+  print(*args, file=stderr, **kwargs)
 
 
 def die(code, reason=None):
@@ -22,11 +22,12 @@ def die(code, reason=None):
 
 
 def show_qr(issuer, user, secret):
-  cmd = "qrencode -t ANSI -m 1 -o -"
-        " 'otpauth://totp/{user}?secret={secret}&issuer={issuer}'"
-  cmd = cmd.format(issuer=issuer, user=user, secret=secret)
   from subprocess import call
   import shlex
+  cmd = "qrencode -t ANSI -m 1 -o -" \
+        " 'otpauth://totp/{user}?secret={secret}&issuer={issuer}'"
+  cmd = cmd.format(issuer=issuer, user=user, secret=secret)
+  out(cmd)  # just in case old qrencode cannot display ANSI
   try:
     call(shlex.split(cmd))
   except FileNotFoundError:
@@ -51,7 +52,7 @@ def check_totp(secret, cb):
       time.strftime("%Y-%m-%d %H:%M:%S %z"),
       int(time.time()))
   curstamp = int(time.time() / TIME_STEP)
-  totp = pyotp.TOTP(secret)
+  totp = pyotp.TOTP(bytes(secret, 'ascii'))  # old base64 needs bytes
   for _ in range(2):
     out("pin:", end=' ')
     pin = input()
@@ -76,17 +77,19 @@ if __name__ == '__main__':
       cfg = json.load(fd)
 
     if 'totp_secret' in cfg:
-      Thread(target=check_totp,
-             kwargs=dict(secret=cfg['totp_secret'],
-             cb=queue.put),
-             daemon=True).start()
+      t = Thread(target=check_totp,
+                 kwargs=dict(secret=cfg['totp_secret'],
+                 cb=queue.put))
+      t.daemon = True
+      t.start()
 
     if 'tokenizer' in cfg:
       from tokenizer import tokenizer
-      Thread(target=tokenizer,
-             kwargs=dict(cfg=cfg['tokenizer'],
-             cb=queue.put),
-             daemon=True).start()
+      t = Thread(target=tokenizer,
+                 kwargs=dict(cfg=cfg['tokenizer'],
+                 cb=queue.put))
+      t.daemon = True
+      t.start()
 
     try:
       verdict, reason = queue.get(timeout=15)
