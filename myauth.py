@@ -12,7 +12,8 @@ CONFIG = "~/.ssh/myauth.json"
 
 
 def out(*args, **kwargs):
-  print(*args, file=stderr, **kwargs)
+  if stderr.isatty():
+    print(*args, file=stderr, **kwargs)
 
 
 def die(code, reason=None):
@@ -76,7 +77,7 @@ if __name__ == '__main__':
     with open(path, 'rt') as fd:
       cfg = json.load(fd)
 
-    if 'totp_secret' in cfg:
+    if 'totp_secret' in cfg and stderr.isatty():
       t = Thread(target=check_totp,
                  kwargs=dict(secret=cfg['totp_secret'],
                  cb=queue.put))
@@ -101,6 +102,7 @@ if __name__ == '__main__':
 
 
   orig = os.getenv("SSH_ORIGINAL_COMMAND")
+  out("ORIG COMMAND:", orig)
   if orig:
     os.execl("/bin/sh", "/bin/sh", "-c", os.getenv("SSH_ORIGINAL_COMMAND"))
   else:
