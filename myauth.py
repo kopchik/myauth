@@ -57,10 +57,12 @@ def check_totp(secret, cb):
   for _ in range(2):
     out("pin:", end=' ')
     pin = input()
-    for i in range(-1, 2):
-      cnt = curstamp + TIME_STEP * i
+    for i in range(-2, 2):
+      cnt = curstamp + i
       expected = totp.generate_otp(cnt)
+      #print(cnt, expected)
       if expected == pin:
+        out("otp: matched %s"%i)
         cb(('allow', "good otp"))
         return
   else:
